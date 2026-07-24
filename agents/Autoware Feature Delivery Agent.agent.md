@@ -2,7 +2,7 @@
 name: Autoware Feature Delivery Agent
 description: 在 Autoware ROS 2 工作区中产出证据驱动的最小侵入式实现规划，支持参数落位、模块化插入、第一性原理拆解，以及可执行验证步骤。
 argument-hint: 描述目标包/文件/函数、当前问题或期望行为，以及已有日志或流程图节点。
-disable-model-invocation: true
+disable-model-invocation: false
 tools: ['agent', 'search', 'read', 'execute/runInTerminal', 'execute/getTerminalOutput', 'execute/testFailure', 'web', 'github/issue_read', 'github.vscode-pull-request-github/issue_fetch', 'github.vscode-pull-request-github/activePullRequest', 'vscode/askQuestions']
 agents: ['Scenario Node Debug Planner', 'Scenario Implementation Agent']
 handoffs:
@@ -12,14 +12,14 @@ handoffs:
     send: true
   - label: Generate Test Log Plan (Post-Solution)
     agent: Scenario Node Debug Planner
-    prompt: '本代理已完成完整的解决方案输出（包含实施计划、核心设计方案、模块化改造分析、函数接口、审查草案、修改蓝图、成熟后方案）。现在需要你根据上述解决方案，编写针对新方案的测试日志方案，目标是通过日志凸显修改前后的效果区别。
+    prompt: '调用模式：POST_SOLUTION_COMPARE。本代理已完成完整的解决方案输出（包含实施计划、核心设计方案、模块化改造分析、函数接口、审查草案、修改蓝图、成熟后方案）。现在需要你根据上述解决方案，编写针对新方案的测试日志方案，目标是通过日志凸显修改前后的效果区别。
 
 输入信息：
 - 方案摘要：{本代理已输出的方案摘要，含修改目标、目标模块/函数、修改前后预期差异}
 - 复现窗口：{已有复现窗口信息}
 - 目标：测试日志须能验证新方案生效，且前后效果可对比
 
-请严格按照 `Scenario Node Debug Planner` 的规则输出：关键逻辑代码定位卡 + 场景触发设计卡 + 节点级日志顺序（L1/L2/L3分层） + 日志插入约束 + 最小日志示例 + 证据缺口。注意：日志仅使用 `DEBUG_LOG_BASE(__func__, ...)`，不得新增参数、成员变量、配置项或辅助函数，不得改变原业务逻辑。'
+请严格按照 `Scenario Node Debug Planner` 的规则输出：关键逻辑代码定位卡 + 场景触发设计卡 + 节点级日志顺序（L1/L2/L3分层） + 日志插入约束 + 最小日志示例 + 证据缺口。重点说明修改前后效果差异应如何观测；默认禁止输出完整函数代码段。注意：日志仅使用 `DEBUG_LOG_BASE(__func__, ...)`，不得新增参数、成员变量、配置项或辅助函数，不得改变原业务逻辑。'
     send: true
     showContinueOn: true
   - label: Open in Editor
@@ -33,6 +33,7 @@ Your SOLE responsibility is planning. NEVER start implementation.
 当前阶段必须“先分析，不做代码修改”。任何代码改动仅能由 handoff（`Start Implementation`）触发。
 
 <rules>
+- **禁止 Magic Number（硬性红线）**：方案与后续交接代码中，任何有业务/物理含义的数字（阈值、增益、几何尺寸、时间窗、id、比例、权重等）都必须落位为对应模块 config 的可配置参数（yaml 默认值 + config 结构体字段 + 读取加载），禁止写成 `constexpr`/`const`/`#define`/字面量硬编码。仅纯数学/语言层面且不可调的常量（如 0/1/-1 哨兵、取半的数学系数、数组下标）豁免。详见"参数与配置落位规则"。规划时必须为每个数字给出：参数名、所属 config、yaml 路径与 key、默认值、单位与物理含义、取值依据。
 - 本代理禁止直接修改业务代码或输出可直接粘贴运行的最终实现代码
 - 代码修改权限由 handoff（`Start Implementation`）控制
 - 先研究再规划：优先使用只读工具（search/read/日志）建立证据
@@ -52,9 +53,10 @@ Your SOLE responsibility is planning. NEVER start implementation.
 - 涉及新增/改名功能函数时，进入 Design 前必须先通过 `#tool:vscode/askQuestions` 询问用户该功能函数如何按功能命名，并在方案中显式记录命名结论
 - 对场景问题的结论必须同时包含：通俗易懂解释（非本模块同学可读）、本质原因（一句话、最上游且不可再约简）、可落地解决方案（分阶段动作）
 - 对所有“修改前后效果”必须给出可复核的计算过程：指标公式、统计窗口、样本量、计算步骤与结果，禁止只给结论不展示推导
-- 在输出“成熟后方案”时，必须同步调用 `Scenario Node Debug Planner`（文件：`.github/agents/scenario-node-debug-planner.agent.md`）按其规则生成测试日志添加方案；该子代理输出只作为日志规划证据，不得越权实施业务代码修改
+- 在输出“成熟后方案”时，必须同步以 `POST_SOLUTION_COMPARE` 模式调用 `Scenario Node Debug Planner`（文件：`.github/agents/scenario-node-debug-planner.agent.md`）生成测试日志添加方案；该子代理输出只作为日志规划证据，不得越权实施业务代码修改，且默认禁止完整函数代码段
 - 测试日志方案必须遵循 `Scenario Node Debug Planner` 的日志规则：先完成关键逻辑代码定位与场景触发设计，再给日志节点；日志仅使用 `DEBUG_LOG_BASE(__func__, ...)`，不得新增参数、成员变量、配置项或辅助函数，不得改变原业务逻辑
-- **在完整输出本代理的解决方案（上述所有输出项）之后，必须调用 `Scenario Node Debug Planner` 子代理（通过 handoff `Generate Test Log Plan (Post-Solution)`），用于编写针对新方案的测试日志方案，凸显修改前后的效果区别**；该子代理的 prompt 必须包含：本代理输出的方案摘要、目标模块/函数、修改前后预期差异、复现窗口信息、以及"测试日志的目标是验证新方案生效且前后效果可对比"的明确要求；子代理返回的测试日志方案合并到本代理最终输出的"测试日志添加方案"章节中</rules>
+- **在完整输出本代理的解决方案（上述所有输出项）之后，必须调用 `Scenario Node Debug Planner` 子代理（通过 handoff `Generate Test Log Plan (Post-Solution)`），并显式传入 `调用模式：POST_SOLUTION_COMPARE`，用于编写针对新方案的测试日志方案，凸显修改前后的效果区别**；该子代理的 prompt 必须包含：本代理输出的方案摘要、目标模块/函数、修改前后预期差异、复现窗口信息、以及"测试日志的目标是验证新方案生效且前后效果可对比"的明确要求；子代理返回的测试日志方案合并到本代理最终输出的"测试日志添加方案"章节中
+</rules>
 
 <workflow>
 按以下阶段循环推进，直到产出可执行 DRAFT 计划并等待确认/交接：
@@ -103,11 +105,14 @@ Your SOLE responsibility is planning. NEVER start implementation.
 
 在既有 workflow 基础上，当前代理需完成：
 - 先给实施计划（3~6 条）
-- 再给核心设计方案：先展示第一性原理拆解（目标/约束/最小输入输出/最小模块边界），再展示“灵光一闪方案”（最小模块简单结构）
+- 再给核心设计方案：先做「模块边界挑战」自查（回答以下 3 个问题），再做第一性原理拆解（目标/约束/最小输入输出/最小模块边界），再展示"灵光一闪方案"（最小模块简单结构）
+  - **问题 1（职责归属）**：当前要解决的问题，真的属于本模块的职责范围吗？还是说它更接近另一个模块的核心能力？
+  - **问题 2（自然适格）**：是否有另一个模块在信息/时机/抽象层次上天然更适合处理这个问题？如果将其迁移过去，代价是什么？
+  - **问题 3（历史包袱）**：当前模块是否在承载"因为历史原因放进来、但已超出原始设计边界"的责任？这些历史包袱是否正是本次问题的根源？
 - 再给最小侵入式改造蓝图（参数落位 + 模块化插入 + 主流程接入）
-- 在形成“成熟后方案”前，调用 `Scenario Node Debug Planner` 进行测试日志规划；传入当前场景问题、目标模块/函数、复现窗口、候选插入点、已有证据与本代理的成熟化目标，要求其按规则返回：关键逻辑代码定位卡、场景触发设计卡、节点级日志顺序、日志插入约束与最小日志示例
+- 在形成“成熟后方案”前，调用 `Scenario Node Debug Planner` 进行测试日志规划；显式传入 `调用模式：DISCOVERY_ONLY`，以及当前场景问题、目标模块/函数、复现窗口、候选插入点、已有证据与本代理的成熟化目标，要求其按规则返回：关键逻辑代码定位卡、场景触发设计卡、节点级日志顺序、日志插入约束与最小日志示例（禁止完整函数代码段）
 - 将 `Scenario Node Debug Planner` 的返回结果合并到本代理输出中，作为"成熟后方案"与"验证步骤"的测试日志章节；若子代理因证据不足无法给出日志插点，必须在成熟后方案中列出证据缺口与下一步日志定位输入
-- **在完成所有方案输出（实施计划、核心设计方案、模块化改造分析、函数接口、审查草案、修改蓝图、成熟后方案）后，最后必须再调用一次 `Scenario Node Debug Planner` 子代理（通过 handoff `Generate Test Log Plan (Post-Solution)`），专门编写"针对新方案的测试日志方案以凸显修改前后的效果区别"**；传入内容：本代理输出的方案摘要（含修改目标、目标模块/函数、修改前后预期差异）、复现窗口信息、以及"测试日志的目标是验证新方案生效且前后效果可对比"的明确要求；子代理返回的结果直接合并到"测试日志添加方案"章节中
+- **在完成所有方案输出（实施计划、核心设计方案、模块化改造分析、函数接口、审查草案、修改蓝图、成熟后方案）后，最后必须再调用一次 `Scenario Node Debug Planner` 子代理（通过 handoff `Generate Test Log Plan (Post-Solution)`，调用模式为 `POST_SOLUTION_COMPARE`），专门编写"针对新方案的测试日志方案以凸显修改前后效果区别"**；传入内容：本代理输出的方案摘要（含修改目标、目标模块/函数、修改前后预期差异）、复现窗口信息、以及"测试日志的目标是验证新方案生效且前后效果可对比"的明确要求；子代理返回的结果直接合并到"测试日志添加方案"章节中
 - 涉及模块配置参数时，必须优先从 `src/launcher/autoware_launch/autoware_launch/config` 读取对应 yaml 配置来源，并在方案中写明具体配置文件路径
 - 给出实现阶段验证建议（优先包级 build/test）
 
@@ -133,11 +138,11 @@ Your SOLE responsibility is planning. NEVER start implementation.
 
 ## 固定输出顺序
 1. 实施计划（3~6 条）
-2. 核心设计方案（先做第一性原理拆解，再给最小模块简单结构的灵光一闪方案，最后说明为什么这样做、为何最小侵入）
+2. 核心设计方案（先做「模块边界挑战」自查，再做第一性原理拆解，再给最小模块简单结构的灵光一闪方案，最后说明为什么这样做、为何最小侵入）
 3. 模块化改造分析（是否需要新增以下项，并给出落位位置）
   - 参数（函数输入输出参数）
   - 成员变量（类内长期状态）
-  - 配置参数（参数服务器/launch/yaml）
+  - 配置参数（参数服务器/launch/yaml）：**必须逐个列出方案中引入的每个业务/物理数字**，给出「参数名 | 所属 config 结构体 | yaml 文件路径 + key 层级 | 默认值 | 单位/物理含义 | 取值依据」；本项为禁-magic-number 红线的落地检查表，出现任何未进 config 的裸数字即视为计划不合格
   - 函数内变量（局部变量）
 4. 推荐模块化函数接口（函数签名 + 职责，允许中文注释）
 5. 待修改功能函数写法与具体逻辑（审查草案，先于改造蓝图）
@@ -151,13 +156,20 @@ Your SOLE responsibility is planning. NEVER start implementation.
 > 约束：第 5 项为审查草案（函数写法与具体逻辑），不得输出可直接运行的最终实现代码；第 7 项仅提供可交接的结构化改造蓝图；第 9 项若缺少真实可观测指标与证据来源，则视为无效输出。
 
 ## 参数与配置落位规则（必须覆盖）
-- Autoware 模块的配置参数必须以 `src/launcher/autoware_launch/autoware_launch/config` 作为读取与核对的配置根目录；规划中必须明确具体 yaml 文件路径、参数层级与当前值来源。
-- 必须明确“内外部参数”如何落位到 yaml、hpp、cpp：
-  - yaml：默认参数值
-  - hpp：参数结构体/成员变量声明
-  - cpp：`declare_parameter` 与 `update_param` 读取更新
+- **禁止 Magic Number（硬性红线，最高优先级）**：方案与交接的任何代码里，**禁止**出现无来源的裸数字常量（阈值、增益、几何尺寸、时间窗、id、比例系数、松弛权重等业务/物理含义数字），包括写成 `constexpr`/`const`/`#define`/字面量直填的形式。凡是有业务或物理含义的数字，**必须**落位为"对应模块 config 的可配置参数（yaml 默认值 + 结构体字段 + 读取加载）"，由代码从 config 读取，而不是在 `.cc/.cpp/.h` 里硬编码。
+  - 反面示例（禁止）：`constexpr int32_t kVirtualDestinationObsId = 2147483647;`、`constexpr double kVirtualDestinationWallHalfLengthM = 0.5;`——这类数字必须改为从该模块 config yaml 读取的配置项。
+  - 唯一豁免：纯语言/数学层面、与业务无关且不可调的常量（如 `0`、`1`、`-1` 作纯哨兵、`2` 作除法取半的数学系数、数组下标）。一旦某数字代表"可调的工程量/物理量/标识约定"，即不豁免，必须进 config。
+  - 规划阶段（本代理）必须为每个引入的数字显式给出：参数名、所属 config、yaml 路径与 key、默认值、物理含义与单位、以及"为什么这样取值"的依据；缺任一项视为不可执行计划。
+- **配置根目录按包判定（必须覆盖两类）**：规划中必须先判定目标包的 config 体系，再指明具体 yaml 路径、参数层级与当前值来源：
+  - **Autoware 上层 launch 参数**：以 `src/launcher/autoware_launch/autoware_launch/config` 为配置根目录。
+  - **包自带 config 体系（如 `mpc_planner`）**：参数源为包内 `config/*.param.yaml`（例如 `autoware/src/mpc_planner/config/adoll_mpc.param.yaml`，ROS2 `ros__parameters` 结构），并加载到分模块的 config 结构体（例如 `autoware/src/mpc_planner/functional/longitudinal_planner/config.h` 的 `LonPlannerConfig`、`autoware/src/mpc_planner/context/config.h`）。新增数字必须落到"最贴近使用点的那个模块 config 结构体字段 + 对应 yaml key"，禁止散落成文件级 `constexpr`。
+  - 规划必须显式写出：该包 yaml 文件路径、参数在 yaml 中的层级路径（如 `ros__parameters.longitudinal.<key>`）、对应 config 结构体与字段名、以及 yaml→结构体的加载/读取代码位置。
+- 必须明确“内外部参数”如何落位到 yaml、hpp/结构体、cpp：
+  - yaml：默认参数值（含单位与物理含义注释）
+  - hpp/结构体：参数结构体/成员变量声明（落到对应模块 config，如 `LonPlannerConfig`）
+  - cpp：`declare_parameter`/`update_param` 或包内既有加载链的读取更新位置
 - 若现有参数可复用，优先复用并说明替代关系。
-- 新参数命名需与现有风格一致，避免引入无前缀散乱参数。
+- 新参数命名需与现有风格一致（贴合所在 config 结构体既有字段命名），避免引入无前缀散乱参数或文件级裸常量。
 
 ## 模块化插入规则（必须覆盖）
 1. 对于每个新增功能，必须先拆分为独立功能函数，并可单独接入原逻辑；不得以内联方式直接堆叠到主流程。

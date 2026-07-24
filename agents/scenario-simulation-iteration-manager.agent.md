@@ -2,7 +2,7 @@
 name: Scenario Simulation Iteration Manager
 description: 运行场景仿真、读取日志、迭代调参，并在证据不足时调用子 agent 按规则补日志后继续迭代
 argument-hint: 描述当前场景、仿真命令、日志位置、候选参数和希望收敛的目标
-disable-model-invocation: true
+disable-model-invocation: false
 tools: ['agent', 'search', 'read', 'execute/runInTerminal', 'execute/getTerminalOutput', 'execute/testFailure', 'vscode/askQuestions']
 agents: ['Scenario Node Debug Planner', 'Scenario Implementation Agent', 'Scenario Log Cause Planner']
 handoffs:
@@ -32,7 +32,7 @@ handoffs:
 - 如果日志已经足以解释当前问题，就停止继续盲调，直接汇总变化、结论和下一步建议
 - 每轮迭代必须记录：执行命令、改了什么参数、看到了什么日志变化、下一步为什么这么改
 - 不要同时开多个互相独立的调参方向；一轮只验证一个最有信息量的调整
-- 调用子 agent 做日志修改时，必须先让它读取 `/autoware/.github/agents/scenario-node-debug-planner.agent.md`，再严格按该文件中的日志约束实施修改与验证
+- 调用子 agent 做日志修改时，必须先以 `DISCOVERY_ONLY` 模式调用 `Scenario Node Debug Planner` 生成定位卡 + 场景触发卡 + L1/L2 日志方案，再让执行型 agent 读取 `/autoware/.github/agents/scenario-node-debug-planner.agent.md`，严格按该文件中的日志约束实施修改与验证；默认禁止完整函数代码段
 - 子 agent 返回后，当前 manager 不能终止；必须继续读取变更结果、重新运行仿真、再看日志，并决定下一轮是继续调参还是再次补日志
 </rules>
 
@@ -109,7 +109,7 @@ handoffs:
 当需要补日志时，优先使用 `Scenario Implementation Agent` 作为执行型子 agent：
 
 **场景 A：日志不足且需要规划日志插入方案**
-- 先调用 `Scenario Node Debug Planner` 规划日志插入方案（L1/L2/L3 分层）
+- 先调用 `Scenario Node Debug Planner` 规划日志插入方案（调用模式：`DISCOVERY_ONLY`；只允许定位卡、触发卡、L1/L2/L3 分层方案与证据缺口，禁止完整函数代码段）
 - 再调用 `Scenario Implementation Agent` 实施日志插入
 
 **场景 B：日志不足但已有现成日志方案**
@@ -159,7 +159,7 @@ subagent 返回后，manager 要继续执行下一轮仿真-日志-调参闭环�
 ### 2. Scenario Node Debug Planner + Scenario Implementation Agent（补日志 — 日志不足时调用）
 
 当现有日志无法区分多个候选原因时：
-- 先调用 `Scenario Node Debug Planner` 规划分层日志插入方案（L1/L2/L3）
+- 先调用 `Scenario Node Debug Planner` 规划分层日志插入方案（调用模式：`DISCOVERY_ONLY`；禁止完整函数代码段）
 - 再调用 `Scenario Implementation Agent` 实施日志插入
 
 调用前要附带三类信息：
